@@ -110,7 +110,8 @@
                          , backoff_ceiling := non_neg_integer()
                          }.
 
--define(MAX_STREAMS, 999). %% Apple declares max 1000 concurrent streams 
+%% Apple declares max 1000 concurrent streams, allowing a bit less
+-define(MAX_STREAMS, 950).  
 %%%===================================================================
 %%% API
 %%%===================================================================
