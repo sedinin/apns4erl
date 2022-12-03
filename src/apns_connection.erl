@@ -111,7 +111,7 @@
                          }.
 
 %% Apple declares max 1000 concurrent streams, allowing a bit less
--define(MAX_STREAMS, 950).  
+-define(MAX_STREAMS, 999).  
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -378,6 +378,7 @@ connected( info
   #{StreamRef := StreamData} = Streams0,
   #{from := From} = StreamData,
   Streams1 = maps:remove(StreamRef, Streams0),
+  gun:cancel(GunPid, StreamRef), %% final response, closing stream
   gen_statem:reply(From, {Status, Headers, no_body}),
   {keep_state, StateData0#{gun_streams => Streams1}};
 connected( info
@@ -397,6 +398,7 @@ connected( info
   #{StreamRef := StreamData} = Streams0,
   #{from := From, status := Status, headers := H, body := B0} = StreamData,
   Streams1 = maps:remove(StreamRef, Streams0),
+  gun:cancel(GunPid, StreamRef), %% final, closing stream
   gen_statem:reply(From, {Status, H, <<B0/binary, Data/binary>>}),
   {keep_state, StateData0#{gun_streams => Streams1}};
 connected( info
@@ -418,6 +420,7 @@ connected( info
   #{from := From} = StreamData,
   gen_statem:reply(From, {error, Reason}),
   Streams1 = maps:remove(StreamRef, Streams0),
+  gun:cancel(GunPid, StreamRef),
   {keep_state, StateData0#{gun_streams => Streams1}};
 connected( info
          , {gun_error, GunPid, Reason}
@@ -436,6 +439,7 @@ connected(info,
       #{from := From} = StreamData,
       gen_statem:reply(From, {error, timeout}),
       Streams1 = maps:remove(StreamRef, Streams0),
+      gun:cancel(GunPid, StreamRef),
       {keep_state, StateData0#{gun_streams => Streams1}};
     error ->
       %% cant find stream data by stream ref? 
