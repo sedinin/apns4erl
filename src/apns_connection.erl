@@ -110,8 +110,8 @@
                          , backoff_ceiling := non_neg_integer()
                          }.
 
-%% Apple declares max 1000 concurrent streams, allowing a bit less
--define(MAX_STREAMS, 999).  
+%% Apple declares max 500 concurrent streams allowed by default
+-define(DEFAULT_MAX_STREAMS, 500).  
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -222,6 +222,7 @@ init({Connection, Client}) ->
   StateData = #{ connection      => Connection
                , client          => Client
                , gun_streams     => #{}
+               , allowed_streams => ?DEFAULT_MAX_STREAMS
                , backoff         => 1
                , backoff_ceiling => application:get_env(apns, backoff_ceiling, 10)
                },
@@ -248,6 +249,8 @@ open_origin(internal, _, #{connection := Connection} = StateData) ->
                            , #{ protocols      => [http2]
                               , transport_opts => TransportOpts
                               , retry          => 0
+                              %% we need streams count from server (op: max_concurrent_streams)
+                              , http2_opts     => #{ notify_settings_changed => true }
                               }}}}.
 
 -spec open_proxy(_, _, _) -> _.
@@ -321,13 +324,13 @@ connected(internal, on_connect, #{client := Client}) ->
   keep_state_and_data;
 connected( {call, From}
          , {push_notification, DeviceId, Notification, Headers}
-         , StateData) ->
+         , #{allowed_streams := AllowedStreams} = StateData) ->
   #{ connection := Connection
    , gun_pid := GunPid
    , gun_streams := Streams0} = StateData,
   StreamsCount = maps:size(Streams0),
   if
-    StreamsCount >= ?MAX_STREAMS ->
+    StreamsCount >= AllowedStreams ->
       {keep_state_and_data, {reply, From, {error, overload}}};
     true ->
       #{timeout := Timeout} = Connection,
@@ -344,13 +347,13 @@ connected( {call, From}
   end;
 connected( {call, From}
          , {push_notification, Token, DeviceId, Notification, Headers0}
-         , StateData0) ->
+         , #{allowed_streams := AllowedStreams} = StateData0) ->
   #{ connection := Connection
    , gun_pid := GunPid
    , gun_streams := Streams0} = StateData0,
   StreamsCount = maps:size(Streams0),
   if
-    StreamsCount >= ?MAX_STREAMS ->
+    StreamsCount >= AllowedStreams ->
       {keep_state_and_data, {reply, From, {error, overload}}};
     true ->
       #{timeout := Timeout} = Connection,
@@ -411,6 +414,13 @@ connected( info
   StreamState1 = StreamState0#{body => <<B0/binary, Data/binary>>},
   Streams1 = Streams0#{StreamRef => StreamState1},
   {keep_state, StateData0#{gun_streams => Streams1}};
+connected( info
+         , {gun_notify, GunPid, settings_changed, Settings}
+         , #{gun_pid := GunPid} = StateData0) ->
+  %% settings frame received, we have to get streams count to limit
+  #{max_concurrent_streams := AllowedStreams} = Settings,
+  io:format(standard_error, "new streams limit: ~p", [AllowedStreams]),
+  {keep_state, StateData0#{allowed_streams => AllowedStreams}};
 connected( info
          , {gun_error, GunPid, StreamRef, Reason}
          , #{gun_pid := GunPid} = StateData0) ->
