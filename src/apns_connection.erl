@@ -416,12 +416,17 @@ connected( info
          , #{gun_pid := GunPid} = StateData0) ->
   %% answering with error, remove entry
   #{gun_streams := Streams0} = StateData0,
-  #{StreamRef := StreamData} = Streams0,
-  #{from := From} = StreamData,
-  gen_statem:reply(From, {error, Reason}),
-  Streams1 = maps:remove(StreamRef, Streams0),
-  gun:cancel(GunPid, StreamRef),
-  {keep_state, StateData0#{gun_streams => Streams1}};
+  case maps:get(StreamRef, Streams0, null) of
+    null -> 
+      %% nothing todo
+      {keep_state, StateData0};
+    StreamData ->
+      #{from := From} = StreamData,
+      gen_statem:reply(From, {error, Reason}),
+      Streams1 = maps:remove(StreamRef, Streams0),
+      gun:cancel(GunPid, StreamRef),
+      {keep_state, StateData0#{gun_streams => Streams1}}
+    end;
 connected( info
          , {gun_error, GunPid, Reason}
          , #{gun_pid := GunPid} = StateData0) ->
