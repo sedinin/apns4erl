@@ -242,12 +242,12 @@ open_connection(internal, _, #{connection := Connection} = StateData) ->
 open_origin(internal, _, #{connection := Connection} = StateData) ->
   Host = host(Connection),
   Port = port(Connection),
-  TransportOpts = transport_opts(Connection),
+  TlsOpts = tls_opts(Connection),
   {next_state, open_common, StateData,
     {next_event, internal, { Host
                            , Port
                            , #{ protocols      => [http2]
-                              , transport_opts => TransportOpts
+                              , tls_opts       => TlsOpts
                               , retry          => 0
                               %% we need streams count from server (op: max_concurrent_streams)
                               , http2_opts     => #{ notify_settings_changed => true }
@@ -292,12 +292,12 @@ proxy_connect_to_origin(internal, on_connect, StateData) ->
   #{connection := Connection, gun_pid := GunPid} = StateData,
   Host = host(Connection),
   Port = port(Connection),
-  TransportOpts = transport_opts(Connection),
+  TlsOpts = tls_opts(Connection),
   Destination0 = #{ host => Host
                   , port => Port
                   , protocol => http2
                   , transport => tls
-                  , tls_opts => TransportOpts
+                  , tls_opts => TlsOpts
                   },
   Destination = case proxy(Connection) of
     #{ username := Username, password := Password } ->
@@ -564,7 +564,7 @@ proxy(#{proxy_info := Proxy}) ->
 proxy(_) ->
   undefined.
 
-transport_opts(Connection) ->
+tls_opts(Connection) ->
   case type(Connection) of
     certdata ->
       Cert = certdata(Connection),
