@@ -636,7 +636,7 @@ backoff(N, Ceiling) ->
 -spec reply_errors_and_cancel_timers([stream_data()], term()) -> ok.
 reply_errors_and_cancel_timers(Streams, Reason) ->
   [reply_error_and_cancel_timer(From, Reason, Tmr) || 
-    #{from := From, timer := Tmr} <- Streams],
+    #{from := From, timer := Tmr} <- maps:values(Streams)],
   ok.
 
 -spec reply_error_and_cancel_timer(From :: {pid(), term()}, Reason :: term(),
