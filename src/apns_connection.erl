@@ -246,7 +246,7 @@ open_origin(internal, _, #{connection := Connection} = StateData) ->
     {next_event, internal, { Host
                            , Port
                            , #{ protocols      => [http2]
-                              , transport_opts => TransportOpts
+                              , http2_opts     => TransportOpts
                               , retry          => 0
                               }}}}.
 
@@ -570,7 +570,7 @@ transport_opts(Connection) ->
       Keyfile = keyfile(Connection),
       [{certfile, Certfile}, {keyfile, Keyfile}];
     token ->
-      []
+      #{} %% no transport options for token
   end.
 
 %%%===================================================================
