@@ -328,7 +328,7 @@ connected( {call, From}
    , max_gun_streams := MaxStreams} = StateData,
   StreamAllowed = stream_allowed(maps:size(Streams0), MaxStreams),
   if
-    StreamAllowed ->
+    not StreamAllowed ->
       {keep_state_and_data, {reply, From, {error, {overload, maps:size(Streams0), MaxStreams}}}};
     true ->
       #{timeout := Timeout} = Connection,
@@ -352,8 +352,8 @@ connected( {call, From}
    , max_gun_streams := MaxStreams} = StateData0,
   StreamAllowed = stream_allowed(maps:size(Streams0), MaxStreams),
   if
-    StreamAllowed ->
-      {keep_state_and_data, {reply, From, {error, overload}}};
+    not StreamAllowed ->
+      {keep_state_and_data, {reply, From, {error, {overload, maps:size(Streams0), MaxStreams}}}};
     true ->
       #{timeout := Timeout} = Connection,
       Headers = add_authorization_header(Headers0, Token),
@@ -601,7 +601,7 @@ transport_opts(Connection) ->
     boolean()).
 stream_allowed(_StreamsCount, infinity) -> true;
 stream_allowed(StreamsCount, MaxStreams) ->
-  StreamsCount =< MaxStreams. %% XXX: can we overuse streams by 1?
+  StreamsCount < MaxStreams.
 
 
 -spec get_headers(apns:headers()) -> list().
