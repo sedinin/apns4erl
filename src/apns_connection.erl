@@ -103,6 +103,7 @@
 -type state()        :: #{ connection      := connection()
                          , gun_pid         => pid()
                          , gun_streams     => #{gun:stream_ref() => stream_data()}
+                         , max_gun_streams := non_neg_integer()
                          , gun_monitor     => reference()
                          , gun_connect_ref => reference()
                          , client          := pid()
@@ -110,8 +111,6 @@
                          , backoff_ceiling := non_neg_integer()
                          }.
 
-%% Apple declares max 1000 concurrent streams, allowing a bit less
--define(MAX_STREAMS, 999).  
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -222,6 +221,7 @@ init({Connection, Client}) ->
   StateData = #{ connection      => Connection
                , client          => Client
                , gun_streams     => #{}
+               , max_gun_streams => default_max_gun_streams(Connection)
                , backoff         => 1
                , backoff_ceiling => application:get_env(apns, backoff_ceiling, 10)
                },
@@ -324,10 +324,11 @@ connected( {call, From}
          , StateData) ->
   #{ connection := Connection
    , gun_pid := GunPid
-   , gun_streams := Streams0} = StateData,
-  StreamsCount = maps:size(Streams0),
+   , gun_streams := Streams0
+   , max_gun_streams := MaxStreams} = StateData,
+  StreamAllowed = stream_allowed(maps:size(Streams0), MaxStreams),
   if
-    StreamsCount >= ?MAX_STREAMS ->
+    StreamAllowed ->
       {keep_state_and_data, {reply, From, {error, overload}}};
     true ->
       #{timeout := Timeout} = Connection,
@@ -347,10 +348,11 @@ connected( {call, From}
          , StateData0) ->
   #{ connection := Connection
    , gun_pid := GunPid
-   , gun_streams := Streams0} = StateData0,
-  StreamsCount = maps:size(Streams0),
+   , gun_streams := Streams0
+   , max_gun_streams := MaxStreams} = StateData0,
+  StreamAllowed = stream_allowed(maps:size(Streams0), MaxStreams),
   if
-    StreamsCount >= ?MAX_STREAMS ->
+    StreamAllowed ->
       {keep_state_and_data, {reply, From, {error, overload}}};
     true ->
       #{timeout := Timeout} = Connection,
@@ -435,9 +437,9 @@ connected( info
   spawn(apns_connection, reply_errors_and_cancel_timers, [Streams, Reason]),
   {next_state, down, StateData0#{gun_streams => #{}},
     {next_event, internal, {down, ?FUNCTION_NAME, Reason}}};
-connected(info, 
-          {timeout, GunPid, StreamRef},
-          #{gun_pid := GunPid, gun_streams := Streams0} = StateData0) ->
+connected( info
+         , {timeout, GunPid, StreamRef}
+         , #{gun_pid := GunPid, gun_streams := Streams0} = StateData0) ->
   %% gun pid matches, we have to answer {error, timeout}
   case maps:find(StreamRef, Streams0) of
     {ok, StreamData} ->
@@ -458,6 +460,12 @@ connected(info,
   %% timeout from different connection?
   %% ignoring
   {keep_state, StateData0};
+connected( info
+         , {gun_notify, GunPid, settings_changed, Settings}
+         , #{gun_pid := GunPid, max_gun_streams := MaxStreams0} = StateData0) ->
+    %% settings received, if contains max_concurrent_streams, update it
+    MaxStreams1 = maps:get(max_concurrent_streams, Settings, MaxStreams0),
+    {keep_state, StateData0#{max_gun_streams => MaxStreams1}};
 connected(EventType, EventContent, StateData) ->
   handle_common(EventType, EventContent, ?FUNCTION_NAME, StateData, drop).
 
@@ -559,23 +567,42 @@ proxy(#{proxy_info := Proxy}) ->
 proxy(_) ->
   undefined.
 
+-spec default_max_gun_streams(connection()) -> non_neg_integer() | infinity.
+default_max_gun_streams(Setts) ->
+    case type(Setts) of
+        token -> 1; %% at start, for token we should set 1
+        _     -> 100
+    end.
+
+
 transport_opts(Connection) ->
   case type(Connection) of
     certdata ->
       Cert = certdata(Connection),
       Key = keydata(Connection),
+      %% XXX: why is proplist here?
       [{cert, Cert}, {key, Key}];
     cert ->
       Certfile = certfile(Connection),
       Keyfile = keyfile(Connection),
+      %% XXX: why is proplist here?
       [{certfile, Certfile}, {keyfile, Keyfile}];
     token ->
-      #{} %% no transport options for token
+      %% we need to know settings, http2 opt
+      #{notify_settings_changed => true}
   end.
 
 %%%===================================================================
 %%% Internal Functions
 %%%===================================================================
+
+-spec(stream_allowed(StreamsCount :: non_neg_integer(),
+                     MaxStreams :: non_neg_integer() | infinity) ->
+    boolean()).
+stream_allowed(_StreamsCount, infinity) -> true;
+stream_allowed(StreamsCount, MaxStreams) ->
+  StreamsCount < MaxStreams.
+
 
 -spec get_headers(apns:headers()) -> list().
 get_headers(Headers) ->
@@ -640,7 +667,7 @@ reply_errors_and_cancel_timers(Streams, Reason) ->
   ok.
 
 -spec reply_error_and_cancel_timer(From :: {pid(), term()}, Reason :: term(),
-  Tmr :: reference()) -> ok.
+                                   Tmr :: reference()) -> ok.
 reply_error_and_cancel_timer(From, Reason, Tmr) ->
-  gen_statem:reply(From, {error, Reason}),
-  erlang:cancel_timer(Tmr).
+    erlang:cancel_timer(Tmr),
+    gen_statem:reply(From, {error, Reason}).
