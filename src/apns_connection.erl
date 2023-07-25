@@ -329,10 +329,10 @@ connected( {call, From}
   StreamAllowed = stream_allowed(maps:size(Streams0), MaxStreams),
   if
     not StreamAllowed ->
-        logf("~p: 1 stream not allowed: ~B (current:~B)~n", [calendar:local_time(), MaxStreams, maps:size(Streams0)]),
+        logf("~p: ~p: 1 stream not allowed: ~B (current:~B)~n", [calendar:local_time(), self(), MaxStreams, maps:size(Streams0)]),
         {keep_state_and_data, {reply, From, {error, {overload, maps:size(Streams0), MaxStreams}}}};
     true ->
-        logf("~p: 1 stream allowed: ~B (current:~B)~n", [calendar:local_time(), MaxStreams, maps:size(Streams0)]),
+        logf("~p: ~p: 1 stream allowed: ~B (current:~B)~n", [calendar:local_time(), self(), MaxStreams, maps:size(Streams0)]),
       #{timeout := Timeout} = Connection,
       StreamRef = send_push(GunPid, DeviceId, Headers, Notification),
       Tmr = erlang:send_after(Timeout, self(), {timeout, GunPid, StreamRef}),
@@ -355,10 +355,10 @@ connected( {call, From}
   StreamAllowed = stream_allowed(maps:size(Streams0), MaxStreams),
   if
     not StreamAllowed ->
-        logf("~p: 2 stream not allowed: ~B (current:~B)~n", [calendar:local_time(), MaxStreams, maps:size(Streams0)]),
+        logf("~p: ~p: 2 stream not allowed: ~B (current:~B)~n", [calendar:local_time(), self(), MaxStreams, maps:size(Streams0)]),
       {keep_state_and_data, {reply, From, {error, {overload, maps:size(Streams0), MaxStreams}}}};
     true ->
-        logf("~p: 2 stream allowed: ~B (current:~B)~n", [calendar:local_time(), MaxStreams, maps:size(Streams0)]),
+        logf("~p: ~p: 2 stream allowed: ~B (current:~B)~n", [calendar:local_time(), self(), MaxStreams, maps:size(Streams0)]),
       #{timeout := Timeout} = Connection,
       Headers = add_authorization_header(Headers0, Token),
       StreamRef = send_push(GunPid, DeviceId, Headers, Notification),
@@ -468,7 +468,7 @@ connected( info
          , {gun_notify, GunPid, settings_changed, Settings}
          , #{gun_pid := GunPid, max_gun_streams := MaxStreams0} = StateData0) ->
     %% settings received, if contains max_concurrent_streams, update it
-    logf("~p: settings_changed: ~p~n", [calendar:local_time(), Settings]),
+    logf("~p: ~p: settings_changed: ~p~n", [calendar:local_time(), self(), Settings]),
     MaxStreams1 = maps:get(max_concurrent_streams, Settings, MaxStreams0),
     {keep_state, StateData0#{max_gun_streams => MaxStreams1}};
 connected(EventType, EventContent, StateData) ->
