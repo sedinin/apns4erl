@@ -584,13 +584,17 @@ tls_opts(Connection) ->
       Cert = certdata(Connection),
       Key = keydata(Connection),
       %% proplist here, because it goes to ssl:connect/3 (by gun)
-      [{cert, Cert}, {key, Key}];
+      [ {cert, Cert}
+      , {key, Key}
+      , {verify, verify_peer} ];
     cert ->
       Certfile = certfile(Connection),
       Keyfile = keyfile(Connection),
-      [{certfile, Certfile}, {keyfile, Keyfile}];
+      [ {certfile, Certfile}
+      , {keyfile, Keyfile}
+      , {verify, verify_peer} ];
     token ->
-      [] 
+      [ {verify, verify_none} ] 
   end.
 
 http2_opts() ->
